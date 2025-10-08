@@ -1,0 +1,58 @@
+// Prisma Schema for Budget App - SHS Student Edition
+// MySQL Database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Transaction {
+  id        String   @id @default(uuid())
+  title     String
+  amount    Float
+  type      String   // "income" or "expense"
+  category  String
+  date      String
+  timestamp BigInt
+  userId    String   @default("default")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([timestamp])
+  @@index([type])
+  @@index([userId])
+  @@map("transactions")
+}
+
+model Budget {
+  id              String   @id @default(uuid())
+  userId          String   @default("default")
+  weeklyAllowance Float    @default(0)
+  transportation  Float    @default(0)
+  food            Float    @default(0)
+  supplies        Float    @default(0)
+  load            Float    @default(0)
+  projects        Float    @default(0)
+  savings         Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId])
+  @@map("budgets")
+}
+
+model Settings {
+  id            String   @id @default(uuid())
+  userId        String   @default("default")
+  hasLaunched   Boolean  @default(false)
+  notifications Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId])
+  @@map("settings")
+}

@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "SHS Budget Tracker",
+    "slug": "shs-budget-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#4F46E5"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.guinayangan.shsbudget"
+    },
+    "android": {
+      "package": "com.guinayangan.shsbudget",
+      "backgroundColor": "#4F46E5"
+    }
+  }
+}
+
