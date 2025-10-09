@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,14 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  ScrollView,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+
+const { width } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation }) {
   const [transactions, setTransactions] = useState([]);
@@ -17,6 +22,20 @@ export default function HomeScreen({ navigation }) {
   const [totalSpent, setTotalSpent] = useState(0);
   const [savings, setSavings] = useState(0);
   const [budgetWarnings, setBudgetWarnings] = useState([]);
+  const [showMenu, setShowMenu] = useState(false);
+  
+  // Animation values
+  const menuSlideAnim = useRef(new Animated.Value(-width)).current;
+  const backdropOpacityAnim = useRef(new Animated.Value(0)).current;
+  const hamburgerRotateAnim = useRef(new Animated.Value(0)).current;
+  const menuItemAnimations = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
 
   useEffect(() => {
     loadTransactions();
@@ -26,15 +45,73 @@ export default function HomeScreen({ navigation }) {
     return unsubscribe;
   }, [navigation]);
 
+  const openMenu = () => {
+    setShowMenu(true);
+    
+    // Animate menu slide in
+    Animated.parallel([
+      Animated.timing(menuSlideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(hamburgerRotateAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Stagger menu items animation
+    menuItemAnimations.forEach((anim, index) => {
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 200,
+        delay: index * 50,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const closeMenu = () => {
+    // Animate menu slide out
+    Animated.parallel([
+      Animated.timing(menuSlideAnim, {
+        toValue: -width,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacityAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(hamburgerRotateAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowMenu(false);
+      // Reset menu item animations
+      menuItemAnimations.forEach(anim => {
+        anim.setValue(0);
+      });
+    });
+  };
+
   const loadTransactions = async () => {
     try {
       const stored = await AsyncStorage.getItem('transactions');
-      if (stored) {
-        const parsedTransactions = JSON.parse(stored);
-        setTransactions(parsedTransactions);
-        calculateStats(parsedTransactions);
-        await checkBudgetWarnings(parsedTransactions);
-      }
+      const transactions = stored ? JSON.parse(stored) : [];
+      setTransactions(transactions);
+      await calculateStats(transactions);
+      await checkBudgetWarnings(transactions);
     } catch (error) {
       console.error('Error loading transactions:', error);
       Alert.alert('Error', 'Failed to load transactions');
@@ -105,25 +182,33 @@ export default function HomeScreen({ navigation }) {
     return mapping[key] || 'Other';
   };
 
-  const calculateStats = (txns) => {
-    const allowance = txns
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const spent = txns
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const savingsAmount = txns
-      .filter((t) => t.category === 'Savings')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const currentBalance = allowance - spent;
-    
-    setTotalAllowance(allowance);
-    setTotalSpent(spent);
-    setSavings(savingsAmount);
-    setBalance(currentBalance);
+  const calculateStats = async (txns) => {
+    try {
+      // Get allowance from budget data instead of transactions
+      const budgetData = await AsyncStorage.getItem('budgets');
+      let weeklyAllowance = 0;
+      
+      if (budgetData) {
+        const parsed = JSON.parse(budgetData);
+        weeklyAllowance = parseFloat(parsed.weeklyAllowance) || 0;
+      }
+      
+      const spent = txns
+        .filter((t) => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      // Calculate savings as leftover allowance after spending
+      const savingsAmount = Math.max(0, weeklyAllowance - spent);
+      
+      const currentBalance = weeklyAllowance - spent;
+      
+      setTotalAllowance(weeklyAllowance);
+      setTotalSpent(spent);
+      setSavings(savingsAmount);
+      setBalance(currentBalance);
+    } catch (error) {
+      console.error('Error calculating stats:', error);
+    }
   };
 
   const handleDeleteTransaction = async (id) => {
@@ -140,7 +225,7 @@ export default function HomeScreen({ navigation }) {
               const updated = transactions.filter((txn) => txn.id !== id);
               await AsyncStorage.setItem('transactions', JSON.stringify(updated));
               setTransactions(updated);
-              calculateStats(updated);
+              await calculateStats(updated);
             } catch (error) {
               console.error('Error deleting transaction:', error);
               Alert.alert('Error', 'Failed to delete transaction');
@@ -184,6 +269,308 @@ export default function HomeScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar style="light" />
 
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.menuButton}
+          onPress={showMenu ? closeMenu : openMenu}
+        >
+          <Animated.View 
+            style={[
+              styles.hamburger,
+              {
+                transform: [{
+                  rotate: hamburgerRotateAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', '90deg'],
+                  })
+                }]
+              }
+            ]}
+          >
+            <Animated.View 
+              style={[
+                styles.hamburgerLine,
+                {
+                  transform: [{
+                    rotate: hamburgerRotateAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '45deg'],
+                    })
+                  }]
+                }
+              ]} 
+            />
+            <Animated.View 
+              style={[
+                styles.hamburgerLine,
+                {
+                  opacity: hamburgerRotateAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 0, 0],
+                  })
+                }
+              ]} 
+            />
+            <Animated.View 
+              style={[
+                styles.hamburgerLine,
+                {
+                  transform: [{
+                    rotate: hamburgerRotateAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '-45deg'],
+                    })
+                  }]
+                }
+              ]} 
+            />
+          </Animated.View>
+        </TouchableOpacity>
+        
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>My Budget</Text>
+          <Text style={styles.headerSubtitle}>SHS Student Edition</Text>
+        </View>
+      </View>
+
+      {/* Hamburger Menu Overlay */}
+      {showMenu && (
+        <View style={styles.menuOverlay}>
+          <Animated.View 
+            style={[
+              styles.menuBackdrop,
+              { opacity: backdropOpacityAnim }
+            ]}
+          >
+            <TouchableOpacity 
+              style={styles.backdropTouchable}
+              onPress={closeMenu}
+            />
+          </Animated.View>
+          <Animated.View 
+            style={[
+              styles.menuContent,
+              {
+                transform: [{ translateX: menuSlideAnim }]
+              }
+            ]}
+          >
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Menu</Text>
+              <TouchableOpacity onPress={closeMenu}>
+                <Animated.Text 
+                  style={[
+                    styles.menuClose,
+                    {
+                      transform: [{
+                        rotate: hamburgerRotateAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '180deg'],
+                        })
+                      }]
+                    }
+                  ]}
+                >
+                  ✕
+                </Animated.Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.menuItems}>
+              <Animated.View
+                style={[
+                  styles.menuItem,
+                  {
+                    opacity: menuItemAnimations[0],
+                    transform: [{
+                      translateX: menuItemAnimations[0].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-50, 0],
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <TouchableOpacity 
+                  style={styles.menuItemTouchable}
+                  onPress={() => {
+                    closeMenu();
+                    navigation.navigate('AddTransaction');
+                  }}
+                >
+                  <Text style={styles.menuIcon}>➕</Text>
+                  <Text style={styles.menuText}>Add Transaction</Text>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Animated.View
+                style={[
+                  styles.menuItem,
+                  {
+                    opacity: menuItemAnimations[1],
+                    transform: [{
+                      translateX: menuItemAnimations[1].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-50, 0],
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <TouchableOpacity 
+                  style={styles.menuItemTouchable}
+                  onPress={() => {
+                    closeMenu();
+                    navigation.navigate('BudgetPlanner');
+                  }}
+                >
+                  <Text style={styles.menuIcon}>📋</Text>
+                  <Text style={styles.menuText}>Budget Planner</Text>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Animated.View
+                style={[
+                  styles.menuItem,
+                  {
+                    opacity: menuItemAnimations[2],
+                    transform: [{
+                      translateX: menuItemAnimations[2].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-50, 0],
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <TouchableOpacity 
+                  style={styles.menuItemTouchable}
+                  onPress={() => {
+                    closeMenu();
+                    navigation.navigate('Statistics');
+                  }}
+                >
+                  <Text style={styles.menuIcon}>📊</Text>
+                  <Text style={styles.menuText}>Statistics</Text>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Animated.View
+                style={[
+                  styles.menuItem,
+                  {
+                    opacity: menuItemAnimations[3],
+                    transform: [{
+                      translateX: menuItemAnimations[3].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-50, 0],
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <TouchableOpacity 
+                  style={styles.menuItemTouchable}
+                  onPress={() => {
+                    closeMenu();
+                    navigation.navigate('Notifications');
+                  }}
+                >
+                  <Text style={styles.menuIcon}>🔔</Text>
+                  <Text style={styles.menuText}>Alerts & Tips</Text>
+                  {budgetWarnings.length > 0 && (
+                    <View style={styles.menuBadge}>
+                      <Text style={styles.menuBadgeText}>{budgetWarnings.length}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Animated.View
+                style={[
+                  styles.menuItem,
+                  {
+                    opacity: menuItemAnimations[4],
+                    transform: [{
+                      translateX: menuItemAnimations[4].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-50, 0],
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <TouchableOpacity 
+                  style={styles.menuItemTouchable}
+                  onPress={() => {
+                    closeMenu();
+                    navigation.navigate('Settings');
+                  }}
+                >
+                  <Text style={styles.menuIcon}>⚙️</Text>
+                  <Text style={styles.menuText}>Settings</Text>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Animated.View
+                style={[
+                  styles.menuDivider,
+                  {
+                    opacity: menuItemAnimations[4],
+                  }
+                ]}
+              />
+
+              <Animated.View
+                style={[
+                  styles.menuItem,
+                  styles.menuItemDanger,
+                  {
+                    opacity: menuItemAnimations[5],
+                    transform: [{
+                      translateX: menuItemAnimations[5].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-50, 0],
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <TouchableOpacity 
+                  style={styles.menuItemTouchable}
+                  onPress={() => {
+                    closeMenu();
+                    Alert.alert(
+                      'Clear All Data',
+                      'This will delete all your data. Are you sure?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Clear All',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await AsyncStorage.clear();
+                              Alert.alert('Success', 'All data cleared!');
+                            } catch (error) {
+                              Alert.alert('Error', 'Failed to clear data');
+                            }
+                          }
+                        }
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.menuIcon}>🗑️</Text>
+                  <Text style={[styles.menuText, styles.menuTextDanger]}>Clear All Data</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </ScrollView>
+          </Animated.View>
+        </View>
+      )}
+
       {/* Budget Warnings */}
       {budgetWarnings.length > 0 && (
         <View style={styles.warningContainer}>
@@ -209,37 +596,6 @@ export default function HomeScreen({ navigation }) {
         </View>
       )}
 
-      {/* Quick Actions */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => navigation.navigate('Notifications')}
-        >
-          <Text style={styles.quickActionIcon}>🔔</Text>
-          <Text style={styles.quickActionText}>Alerts</Text>
-          {budgetWarnings.length > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{budgetWarnings.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => navigation.navigate('Statistics')}
-        >
-          <Text style={styles.quickActionIcon}>📊</Text>
-          <Text style={styles.quickActionText}>Statistics</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => navigation.navigate('BudgetPlanner')}
-        >
-          <Text style={styles.quickActionIcon}>📋</Text>
-          <Text style={styles.quickActionText}>Budget Plan</Text>
-        </TouchableOpacity>
-      </View>
       
       {/* Balance Card */}
       <View style={styles.balanceCard}>
@@ -255,7 +611,7 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statIcon}>💵</Text>
-            <Text style={styles.statLabel}>Allowance</Text>
+            <Text style={styles.statLabel}>Weekly Allowance</Text>
             <Text style={[styles.statValue, { color: '#10B981' }]}>
               ₱{totalAllowance.toFixed(2)}
             </Text>
@@ -284,7 +640,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🎓</Text>
             <Text style={styles.emptyText}>Start tracking your budget!</Text>
-            <Text style={styles.emptySubtext}>Add your allowance and expenses</Text>
+            <Text style={styles.emptySubtext}>Set up your budget and add expenses</Text>
           </View>
         ) : (
           <FlatList
@@ -311,6 +667,148 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F3F4F6',
+  },
+  header: {
+    backgroundColor: '#4F46E5',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  menuButton: {
+    padding: 8,
+    marginRight: 12,
+  },
+  hamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+  },
+  hamburgerLine: {
+    height: 3,
+    backgroundColor: '#fff',
+    borderRadius: 2,
+    transition: 'all 0.3s ease',
+  },
+  hamburgerLineActive: {
+    backgroundColor: '#E0E7FF',
+  },
+  headerContent: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#E0E7FF',
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  backdropTouchable: {
+    flex: 1,
+  },
+  menuContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '80%',
+    height: '100%',
+    backgroundColor: '#fff',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  menuHeader: {
+    backgroundColor: '#fff',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  menuTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  menuClose: {
+    fontSize: 24,
+    color: '#6B7280',
+    fontWeight: '300',
+  },
+  menuItems: {
+    flex: 1,
+    paddingTop: 20,
+  },
+  menuItem: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  menuItemTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  menuIcon: {
+    fontSize: 24,
+    marginRight: 16,
+    width: 30,
+  },
+  menuText: {
+    fontSize: 16,
+    color: '#1F2937',
+    flex: 1,
+  },
+  menuItemDanger: {
+    backgroundColor: '#FEF2F2',
+  },
+  menuTextDanger: {
+    color: '#DC2626',
+  },
+  menuBadge: {
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  menuBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 10,
   },
   balanceCard: {
     backgroundColor: '#4F46E5',
@@ -485,51 +983,6 @@ const styles = StyleSheet.create({
   warningText: {
     fontSize: 12,
     color: '#6B7280',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 12,
-  },
-  quickActionButton: {
-    flex: 1,
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    position: 'relative',
-  },
-  quickActionIcon: {
-    fontSize: 32,
-    marginBottom: 6,
-  },
-  quickActionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4F46E5',
-  },
-  badge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#EF4444',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
   },
 });
 

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
 
 const budgetCategories = [
   { key: 'transportation', label: 'Transportation (Jeep/Trike)', icon: '🚌', example: 'Daily fare to school and back' },
@@ -17,18 +18,31 @@ const budgetCategories = [
   { key: 'supplies', label: 'School Supplies', icon: '📚', example: 'Notebooks, pens, paper' },
   { key: 'load', label: 'Load/Internet', icon: '📱', example: 'Mobile load, WiFi' },
   { key: 'projects', label: 'Projects', icon: '📝', example: 'Group projects, art materials' },
-  { key: 'savings', label: 'Savings Goal', icon: '💰', example: 'Money to save weekly' },
 ];
 
-export default function BudgetPlannerScreen({ navigation }) {
+export default function BudgetPlannerScreen() {
   const [budgets, setBudgets] = useState({});
   const [spending, setSpending] = useState({});
   const [weeklyAllowance, setWeeklyAllowance] = useState('');
+  const [savingsGoals, setSavingsGoals] = useState([]);
+  const [financialInsights, setFinancialInsights] = useState([]);
+  const [showEducation, setShowEducation] = useState(false);
 
   useEffect(() => {
     loadBudgets();
     loadSpending();
   }, []);
+
+  useEffect(() => {
+    generateFinancialInsights();
+  }, [budgets, spending, weeklyAllowance]);
+
+  // Refresh data when screen comes into focus (after adding transactions)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSpending();
+    }, [])
+  );
 
   const loadBudgets = async () => {
     try {
@@ -82,18 +96,21 @@ export default function BudgetPlannerScreen({ navigation }) {
 
   const saveBudgets = async () => {
     try {
+      const dailyAmount = parseFloat(weeklyAllowance) || 0;
+      
       const data = {
         categories: budgets,
-        weeklyAllowance,
+        weeklyAllowance: (dailyAmount * 7).toString(), // Store as weekly for compatibility
+        dailyAllowance: dailyAmount.toString(),
       };
       await AsyncStorage.setItem('budgets', JSON.stringify(data));
-      Alert.alert('Success', 'Budget plan saved!', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      
+      Alert.alert('Success', 'Budget plan saved!');
     } catch (error) {
       Alert.alert('Error', 'Failed to save budget plan');
     }
   };
+
 
   const updateBudget = (category, value) => {
     setBudgets({
@@ -124,6 +141,143 @@ export default function BudgetPlannerScreen({ navigation }) {
     return Object.values(spending).reduce((sum, val) => sum + val, 0);
   };
 
+  const generateFinancialInsights = () => {
+    const insights = [];
+    const totalBudgeted = getTotalBudgeted();
+    const totalSpent = getTotalSpent();
+    const dailyAmount = parseFloat(weeklyAllowance) || 0;
+    const weeklyAmount = dailyAmount * 7;
+    const potentialSavings = weeklyAmount - totalSpent;
+    
+    // Savings potential analysis
+    if (weeklyAmount > 0) {
+      const savingsPercentage = (potentialSavings / weeklyAmount) * 100;
+      
+      if (savingsPercentage > 20) {
+        insights.push({
+          type: 'excellent',
+          icon: '🌟',
+          title: 'Excellent Savings Potential!',
+          message: `You can save ₱${potentialSavings.toFixed(2)} weekly (${savingsPercentage.toFixed(0)}% of allowance)`,
+          tip: 'This is great! You\'re building strong money habits early.',
+          action: 'Consider opening a savings account to earn interest!'
+        });
+      } else if (savingsPercentage > 10) {
+        insights.push({
+          type: 'good',
+          icon: '👍',
+          title: 'Good Savings Potential',
+          message: `You can save ₱${potentialSavings.toFixed(2)} weekly (${savingsPercentage.toFixed(0)}% of allowance)`,
+          tip: 'Try to increase this to 20% for better financial security.',
+          action: 'Look for ways to reduce unnecessary expenses.'
+        });
+      } else if (savingsPercentage > 0) {
+        insights.push({
+          type: 'warning',
+          icon: '⚠️',
+          title: 'Low Savings Rate',
+          message: `You can only save ₱${potentialSavings.toFixed(2)} weekly (${savingsPercentage.toFixed(0)}% of allowance)`,
+          tip: 'Aim to save at least 10-20% of your allowance.',
+          action: 'Review your spending and cut back on non-essentials.'
+        });
+      } else {
+        insights.push({
+          type: 'danger',
+          icon: '🚨',
+          title: 'Overspending Alert!',
+          message: `You\'re spending ₱${Math.abs(potentialSavings).toFixed(2)} more than your allowance!`,
+          tip: 'This is unsustainable and will lead to debt.',
+          action: 'Immediately reduce spending or find ways to earn extra money.'
+        });
+      }
+    }
+
+    // Category analysis
+    Object.entries(spending).forEach(([category, amount]) => {
+      const budgetAmount = parseFloat(budgets[category]) || 0;
+      if (budgetAmount > 0) {
+        const percentage = (amount / budgetAmount) * 100;
+        if (percentage > 100) {
+          insights.push({
+            type: 'warning',
+            icon: '📊',
+            title: `Over Budget: ${getCategoryLabel(category)}`,
+            message: `Spent ₱${amount.toFixed(2)} vs budgeted ₱${budgetAmount.toFixed(2)}`,
+            tip: getCategorySavingTip(category),
+            action: 'Adjust your budget or reduce spending in this category.'
+          });
+        }
+      }
+    });
+
+    // Future planning insights
+    if (weeklyAmount > 0 && potentialSavings > 0) {
+      const monthlySavings = potentialSavings * 4;
+      const yearlySavings = monthlySavings * 12;
+      
+      insights.push({
+        type: 'info',
+        icon: '🎯',
+        title: 'Future Planning',
+        message: `If you save consistently: ₱${monthlySavings.toFixed(0)}/month, ₱${yearlySavings.toFixed(0)}/year`,
+        tip: 'This money can help with college, emergencies, or future goals.',
+        action: 'Set specific savings goals like a laptop, college fund, or emergency fund.'
+      });
+    }
+
+    // Weekly savings insight
+    const leftoverAmount = dailyAmount - totalBudgeted;
+    if (leftoverAmount > 0) {
+      insights.push({
+        type: 'excellent',
+        icon: '💰',
+        title: 'Weekly Savings Potential!',
+        message: `You can save ₱${(leftoverAmount * 7).toFixed(2)} per week if you stick to your budget`,
+        tip: 'Great job! You\'re budgeting wisely and building savings potential.',
+        action: 'Track your spending to see how much you actually save each week!'
+      });
+    }
+
+    setFinancialInsights(insights);
+  };
+
+  const getCategorySavingTip = (category) => {
+    const tips = {
+      'transportation': 'Walk or bike when possible. Share rides with classmates.',
+      'food': 'Bring baon 3-4 times a week. Pack snacks from home.',
+      'supplies': 'Buy in bulk with friends. Look for student discounts.',
+      'load': 'Use free WiFi at school. Only buy load for essential calls.',
+      'projects': 'Share materials with group mates. Reuse when possible.'
+    };
+    return tips[category] || 'Look for ways to reduce spending in this category.';
+  };
+
+  const getCategoryLabel = (key) => {
+    const mapping = {
+      'transportation': 'Transportation',
+      'food': 'Food & Snacks',
+      'supplies': 'School Supplies',
+      'load': 'Load/Data',
+      'projects': 'Projects',
+      'savings': 'Savings',
+    };
+    return mapping[key] || 'Other';
+  };
+
+  const calculateEmergencyFund = () => {
+    const dailyAmount = parseFloat(weeklyAllowance) || 0;
+    const monthlyAllowance = dailyAmount * 30; // 30 days per month
+    const emergencyFund = monthlyAllowance * 3; // 3 months of expenses
+    return emergencyFund;
+  };
+
+  const calculateCollegeFund = () => {
+    const dailyAmount = parseFloat(weeklyAllowance) || 0;
+    const yearlySavings = dailyAmount * 365 * 0.2; // 20% savings
+    const collegeYears = 4;
+    return yearlySavings * collegeYears;
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -137,11 +291,11 @@ export default function BudgetPlannerScreen({ navigation }) {
           </Text>
         </View>
 
-        {/* Weekly Allowance */}
+        {/* Daily Allowance */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💵 Weekly Allowance</Text>
+          <Text style={styles.sectionTitle}>💵 Daily Allowance</Text>
           <View style={styles.allowanceCard}>
-            <Text style={styles.allowanceLabel}>How much do you receive per week?</Text>
+            <Text style={styles.allowanceLabel}>How much do you receive per day?</Text>
             <View style={styles.inputContainer}>
               <Text style={styles.currencySymbol}>₱</Text>
               <TextInput
@@ -153,12 +307,17 @@ export default function BudgetPlannerScreen({ navigation }) {
                 placeholderTextColor="#9CA3AF"
               />
             </View>
+            {weeklyAllowance && (
+              <Text style={styles.allowanceHint}>
+                Weekly: ₱{(parseFloat(weeklyAllowance) * 7).toFixed(2)}/week
+              </Text>
+            )}
           </View>
         </View>
 
         {/* Budget Categories */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📋 Plan Your Spending</Text>
+          <Text style={styles.sectionTitle}>📋 Plan Your Daily Spending</Text>
           
           {budgetCategories.map((cat) => {
             const status = getStatus(cat.key);
@@ -178,7 +337,7 @@ export default function BudgetPlannerScreen({ navigation }) {
 
                 <View style={styles.budgetInputContainer}>
                   <View style={styles.budgetInput}>
-                    <Text style={styles.inputLabel}>Weekly Budget</Text>
+                    <Text style={styles.inputLabel}>Daily Budget</Text>
                     <View style={styles.inputWrapper}>
                       <Text style={styles.currencySymbol}>₱</Text>
                       <TextInput
@@ -190,6 +349,11 @@ export default function BudgetPlannerScreen({ navigation }) {
                         placeholderTextColor="#9CA3AF"
                       />
                     </View>
+                    {budgets[cat.key] && (
+                      <Text style={styles.weeklyHint}>
+                        Weekly: ₱{(parseFloat(budgets[cat.key]) * 7).toFixed(2)}
+                      </Text>
+                    )}
                   </View>
 
                   {budget > 0 && (
@@ -197,6 +361,10 @@ export default function BudgetPlannerScreen({ navigation }) {
                       <View style={styles.spendingRow}>
                         <Text style={styles.spendingLabel}>Spent this week:</Text>
                         <Text style={styles.spendingValue}>₱{spent.toFixed(2)}</Text>
+                      </View>
+                      <View style={styles.spendingRow}>
+                        <Text style={styles.spendingLabel}>Weekly Budget:</Text>
+                        <Text style={styles.spendingValue}>₱{(budget * 7).toFixed(2)}</Text>
                       </View>
                       <View style={styles.spendingRow}>
                         <Text style={styles.spendingLabel}>Remaining:</Text>
@@ -237,12 +405,12 @@ export default function BudgetPlannerScreen({ navigation }) {
             
             {weeklyAllowance && (
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Unallocated:</Text>
+                <Text style={styles.summaryLabel}>Potential Weekly Savings:</Text>
                 <Text style={[
                   styles.summaryValue,
-                  { color: parseFloat(weeklyAllowance) - getTotalBudgeted() >= 0 ? '#10B981' : '#EF4444' }
+                  { color: (parseFloat(weeklyAllowance) * 7) - (getTotalBudgeted() * 7) >= 0 ? '#10B981' : '#EF4444' }
                 ]}>
-                  ₱{(parseFloat(weeklyAllowance) - getTotalBudgeted()).toFixed(2)}
+                  ₱{((parseFloat(weeklyAllowance) * 7) - (getTotalBudgeted() * 7)).toFixed(2)}
                 </Text>
               </View>
             )}
@@ -255,9 +423,9 @@ export default function BudgetPlannerScreen({ navigation }) {
             <Text style={styles.sectionTitle}>📅 Daily Breakdown</Text>
             <View style={styles.dailyCard}>
               <View style={styles.dailyRow}>
-                <Text style={styles.dailyLabel}>Daily Budget:</Text>
+                <Text style={styles.dailyLabel}>Total Daily Budget:</Text>
                 <Text style={styles.dailyValue}>
-                  ₱{(getTotalBudgeted() / 7).toFixed(2)}/day
+                  ₱{getTotalBudgeted().toFixed(2)}/day
                 </Text>
               </View>
               <Text style={styles.dailyHint}>
@@ -266,18 +434,18 @@ export default function BudgetPlannerScreen({ navigation }) {
             </View>
 
             <View style={styles.breakdownCard}>
-              <Text style={styles.breakdownTitle}>Example Weekly Schedule:</Text>
+              <Text style={styles.breakdownTitle}>Daily Budget Breakdown:</Text>
               
               <View style={styles.dayExample}>
                 <Text style={styles.dayLabel}>Monday - Friday (School Days)</Text>
                 <Text style={styles.dayDetail}>
-                  • Jeep to school: ₱{((budgets.transportation || 0) / 5).toFixed(0)}/day
+                  • Transportation: ₱{(parseFloat(budgets.transportation) || 0).toFixed(0)}/day
                 </Text>
                 <Text style={styles.dayDetail}>
-                  • Food/Snacks: ₱{((budgets.food || 0) / 5).toFixed(0)}/day
+                  • Food/Snacks: ₱{(parseFloat(budgets.food) || 0).toFixed(0)}/day
                 </Text>
                 <Text style={styles.dayDetail}>
-                  • Load/Data: ₱{((budgets.load || 0) / 7).toFixed(0)}/day
+                  • Load/Data: ₱{(parseFloat(budgets.load) || 0).toFixed(0)}/day
                 </Text>
               </View>
 
@@ -286,6 +454,83 @@ export default function BudgetPlannerScreen({ navigation }) {
                 <Text style={styles.dayDetail}>• Save or use for entertainment</Text>
                 <Text style={styles.dayDetail}>• Plan for projects if needed</Text>
               </View>
+            </View>
+          </View>
+        )}
+
+        {/* Financial Insights */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>💡 Financial Insights</Text>
+            <TouchableOpacity 
+              style={styles.educationButton}
+              onPress={() => setShowEducation(!showEducation)}
+            >
+              <Text style={styles.educationButtonText}>
+                {showEducation ? 'Hide' : 'Learn'} Why Save?
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {financialInsights.map((insight, index) => (
+            <View key={index} style={[styles.insightCard, styles[`insight${insight.type.charAt(0).toUpperCase() + insight.type.slice(1)}`]]}>
+              <View style={styles.insightHeader}>
+                <Text style={styles.insightIcon}>{insight.icon}</Text>
+                <Text style={styles.insightTitle}>{insight.title}</Text>
+              </View>
+              <Text style={styles.insightMessage}>{insight.message}</Text>
+              <View style={styles.tipBox}>
+                <Text style={styles.tipLabel}>💡 Tip:</Text>
+                <Text style={styles.tipText}>{insight.tip}</Text>
+              </View>
+              <Text style={styles.actionText}>🎯 {insight.action}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Educational Content */}
+        {showEducation && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🎓 Why Students Should Save Money</Text>
+            
+            <View style={styles.educationCard}>
+              <Text style={styles.educationTitle}>1. Emergency Fund</Text>
+              <Text style={styles.educationText}>
+                Life is unpredictable. Having ₱{calculateEmergencyFund().toFixed(0)} saved (3 months of expenses) 
+                protects you from unexpected situations like medical emergencies or family needs.
+              </Text>
+            </View>
+
+            <View style={styles.educationCard}>
+              <Text style={styles.educationTitle}>2. Future Education</Text>
+              <Text style={styles.educationText}>
+                College is expensive! Saving ₱{calculateCollegeFund().toFixed(0)} over 4 years 
+                can help pay for tuition, books, or living expenses when you go to university.
+              </Text>
+            </View>
+
+            <View style={styles.educationCard}>
+              <Text style={styles.educationTitle}>3. Financial Independence</Text>
+              <Text style={styles.educationText}>
+                Learning to save now builds habits that will help you become financially independent. 
+                You'll be ahead of your peers who spend everything they earn.
+              </Text>
+            </View>
+
+            <View style={styles.educationCard}>
+              <Text style={styles.educationTitle}>4. Goal Achievement</Text>
+              <Text style={styles.educationText}>
+                Want a new laptop? A phone? To travel? Saving money helps you achieve your dreams 
+                without relying on parents or going into debt.
+              </Text>
+            </View>
+
+            <View style={styles.educationCard}>
+              <Text style={styles.educationTitle}>5. Investment Opportunities</Text>
+              <Text style={styles.educationText}>
+                Even small amounts saved can be invested. ₱1,000 invested at 18 can grow to ₱10,000+ 
+                by the time you're 30 through compound interest!
+              </Text>
             </View>
           </View>
         )}
@@ -328,9 +573,54 @@ export default function BudgetPlannerScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Advanced Calculations */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📊 Advanced Financial Analysis</Text>
+          
+          <View style={styles.calculationCard}>
+            <Text style={styles.calculationTitle}>Emergency Fund Calculator</Text>
+            <Text style={styles.calculationValue}>
+              ₱{calculateEmergencyFund().toFixed(0)}
+            </Text>
+            <Text style={styles.calculationDesc}>
+              Recommended 3-month emergency fund based on your allowance
+            </Text>
+          </View>
+
+          <View style={styles.calculationCard}>
+            <Text style={styles.calculationTitle}>College Fund Potential</Text>
+            <Text style={styles.calculationValue}>
+              ₱{calculateCollegeFund().toFixed(0)}
+            </Text>
+            <Text style={styles.calculationDesc}>
+              If you save 20% of allowance for 4 years
+            </Text>
+          </View>
+
+          <View style={styles.calculationCard}>
+            <Text style={styles.calculationTitle}>Daily Allowance</Text>
+            <Text style={styles.calculationValue}>
+              ₱{(parseFloat(weeklyAllowance) || 0).toFixed(0)}/day
+            </Text>
+            <Text style={styles.calculationDesc}>
+              Your daily allowance amount
+            </Text>
+          </View>
+
+          <View style={styles.calculationCard}>
+            <Text style={styles.calculationTitle}>Weekly Savings Potential</Text>
+            <Text style={styles.calculationValue}>
+              ₱{(((parseFloat(weeklyAllowance) || 0) - getTotalBudgeted()) * 7).toFixed(0)}/week
+            </Text>
+            <Text style={styles.calculationDesc}>
+              Potential savings if you stick to your budget
+            </Text>
+          </View>
+        </View>
+
         {/* Tips */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💡 Money-Saving Tips</Text>
+          <Text style={styles.sectionTitle}>💡 Money-Saving Tips for Students</Text>
           <View style={styles.tipsCard}>
             <Text style={styles.tipItem}>• Walk to school when possible to save on fare</Text>
             <Text style={styles.tipItem}>• Bring baon instead of buying food</Text>
@@ -340,6 +630,9 @@ export default function BudgetPlannerScreen({ navigation }) {
             <Text style={styles.tipItem}>• Set aside savings first before spending</Text>
             <Text style={styles.tipItem}>• Avoid buying snacks daily - bring from home</Text>
             <Text style={styles.tipItem}>• Join group orders for better prices</Text>
+            <Text style={styles.tipItem}>• Look for student discounts everywhere</Text>
+            <Text style={styles.tipItem}>• Track every peso you spend</Text>
+            <Text style={styles.tipItem}>• Set specific savings goals</Text>
           </View>
         </View>
 
@@ -402,6 +695,13 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 12,
   },
+  weeklyHint: {
+    fontSize: 12,
+    color: '#4F46E5',
+    marginTop: 4,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -421,6 +721,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     paddingVertical: 12,
     color: '#1F2937',
+  },
+  allowanceHint: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   categoryCard: {
     backgroundColor: '#fff',
@@ -660,5 +967,145 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  educationButton: {
+    backgroundColor: '#4F46E5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  educationButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  insightCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  insightExcellent: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#10B981',
+  },
+  insightGood: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#3B82F6',
+  },
+  insightWarning: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  insightDanger: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+  },
+  insightInfo: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#8B5CF6',
+  },
+  insightHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  insightIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  insightTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    flex: 1,
+  },
+  insightMessage: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginBottom: 8,
+  },
+  tipBox: {
+    backgroundColor: '#EEF2FF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  tipLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4F46E5',
+    marginBottom: 4,
+  },
+  tipText: {
+    fontSize: 13,
+    color: '#4F46E5',
+  },
+  actionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  educationCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  educationTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4F46E5',
+    marginBottom: 8,
+  },
+  educationText: {
+    fontSize: 14,
+    color: '#4B5563',
+    lineHeight: 20,
+  },
+  calculationCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    alignItems: 'center',
+  },
+  calculationTitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  calculationValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#4F46E5',
+    marginBottom: 4,
+  },
+  calculationDesc: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
 });

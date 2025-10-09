@@ -10,6 +10,7 @@ import AddTransactionScreen from './src/screens/AddTransactionScreen';
 import StatisticsScreen from './src/screens/StatisticsScreen';
 import BudgetPlannerScreen from './src/screens/BudgetPlannerScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -76,7 +77,7 @@ export default function App() {
             <Stack.Screen 
               name="Home" 
               component={HomeScreen}
-              options={{ title: 'My Budget - SHS Student' }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen 
               name="AddTransaction" 
@@ -97,6 +98,11 @@ export default function App() {
               name="Notifications" 
               component={NotificationsScreen}
               options={{ title: 'Alerts & Tips' }}
+            />
+            <Stack.Screen 
+              name="Settings" 
+              component={SettingsScreen}
+              options={{ title: 'Settings' }}
             />
           </>
         )}
