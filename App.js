@@ -66,43 +66,43 @@ export default function App() {
         }}
       >
         {isFirstLaunch ? (
-          <Stack.Screen 
-            name="Onboarding" 
+          <Stack.Screen
+            name="Onboarding"
             options={{ headerShown: false }}
           >
             {props => <OnboardingScreen {...props} onComplete={completeOnboarding} />}
           </Stack.Screen>
         ) : (
           <>
-            <Stack.Screen 
-              name="Home" 
+            <Stack.Screen
+              name="Home"
               component={HomeScreen}
               options={{ headerShown: false }}
             />
-            <Stack.Screen 
-              name="AddTransaction" 
+            <Stack.Screen
+              name="AddTransaction"
               component={AddTransactionScreen}
-              options={{ title: 'Add Entry' }}
+              options={{ headerShown: false }}
             />
-            <Stack.Screen 
-              name="Statistics" 
+            <Stack.Screen
+              name="Statistics"
               component={StatisticsScreen}
-              options={{ title: 'My Statistics' }}
+              options={{ headerShown: false }}
             />
-            <Stack.Screen 
-              name="BudgetPlanner" 
+            <Stack.Screen
+              name="BudgetPlanner"
               component={BudgetPlannerScreen}
-              options={{ title: 'Budget Planner' }}
+              options={{ headerShown: false }}
             />
-            <Stack.Screen 
-              name="Notifications" 
+            <Stack.Screen
+              name="Notifications"
               component={NotificationsScreen}
-              options={{ title: 'Alerts & Tips' }}
+              options={{ headerShown: false }}
             />
-            <Stack.Screen 
-              name="Settings" 
+            <Stack.Screen
+              name="Settings"
               component={SettingsScreen}
-              options={{ title: 'Settings' }}
+              options={{ headerShown: false }}
             />
           </>
         )}

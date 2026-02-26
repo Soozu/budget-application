@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,29 +6,60 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+import GlobalBackground from '../components/GlobalBackground';
 
-export default function SettingsScreen() {
+/**
+ * SettingsScreen allows users to manage their data and app preferences.
+ * Features:
+ * 1. Data clearing (Reset all transactions and budgets)
+ * 2. Profile/Student info display
+ * 3. App version and credits
+ * 4. Help and Logout placeholders
+ */
+export default function SettingsScreen({ navigation }) {
+  // --- STATE MANAGEMENT ---
+  const [isClearing, setIsClearing] = useState(false); // Loading state for data reset
+  const [userName, setUserName] = useState('Student'); // User's name for profile
+  const [studentYear, setStudentYear] = useState('SHS Student'); // User's student year/level for profile
+
+  const fadeAnim = useState(new Animated.Value(0))[0]; // Screen entrance animation
+
+  /**
+   * Screen entrance animation
+   */
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  /**
+   * Resets all application data stored in AsyncStorage
+   */
   const handleClearAllData = () => {
     Alert.alert(
       'Clear All Data',
       'Are you sure you want to delete all your transactions, budgets, and reset the app? This cannot be undone!',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear All',
           style: 'destructive',
           onPress: async () => {
             try {
+              setIsClearing(true);
               await AsyncStorage.clear();
-              Alert.alert('Success', 'All data cleared! App will restart.');
+              Alert.alert('Success', 'All data cleared! Please restart the app.');
             } catch (error) {
               Alert.alert('Error', 'Failed to clear data');
+            } finally {
+              setIsClearing(false);
             }
           },
         },
@@ -36,15 +67,15 @@ export default function SettingsScreen() {
     );
   };
 
+  /**
+   * Deletes only transaction history
+   */
   const handleClearTransactions = () => {
     Alert.alert(
       'Clear Transactions',
       'Delete all transaction history? Your budget settings will be kept.',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear',
           style: 'destructive',
@@ -61,15 +92,15 @@ export default function SettingsScreen() {
     );
   };
 
+  /**
+   * Deletes only budget configurations
+   */
   const handleClearBudgets = () => {
     Alert.alert(
       'Clear Budget Settings',
       'Delete all budget settings? Your transactions will be kept.',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear',
           style: 'destructive',
@@ -86,15 +117,15 @@ export default function SettingsScreen() {
     );
   };
 
+  /**
+   * Resets the onboarding flag to show welcome screens again
+   */
   const handleResetOnboarding = () => {
     Alert.alert(
       'Reset Onboarding',
       'See the welcome screens again on next app start?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reset',
           onPress: async () => {
@@ -112,215 +143,122 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
-      
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚙️ App Settings</Text>
-          
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Data Management</Text>
-            <Text style={styles.cardDescription}>
-              Manage your stored data and reset the app
-            </Text>
+      <StatusBar style="dark" />
+      <GlobalBackground />
+
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <Animated.View style={[styles.mainView, { opacity: fadeAnim }]}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Settings</Text>
+            <Text style={styles.headerSubtitle}>Manage your profile & data</Text>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Clear Data</Text>
-          
-          <TouchableOpacity
-            style={styles.optionButton}
-            onPress={handleClearTransactions}
-          >
-            <View style={styles.optionIcon}>
-              <Text style={styles.optionEmoji}>📝</Text>
+          {/* Profile Section Placeholder */}
+          <View style={styles.section}>
+            <View style={styles.profileCard}>
+              <View style={styles.profileIcon}><Text style={styles.profileEmoji}>👤</Text></View>
+              <View>
+                <Text style={styles.profileName}>{userName}</Text>
+                <Text style={styles.profileSubtitle}>{studentYear}</Text>
+              </View>
             </View>
-            <View style={styles.optionContent}>
-              <Text style={styles.optionTitle}>Clear Transactions</Text>
-              <Text style={styles.optionDescription}>
-                Delete all transaction history
-              </Text>
-            </View>
-            <Text style={styles.optionArrow}>›</Text>
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={styles.optionButton}
-            onPress={handleClearBudgets}
-          >
-            <View style={styles.optionIcon}>
-              <Text style={styles.optionEmoji}>💰</Text>
-            </View>
-            <View style={styles.optionContent}>
-              <Text style={styles.optionTitle}>Clear Budget Settings</Text>
-              <Text style={styles.optionDescription}>
-                Delete all budget configurations
-              </Text>
-            </View>
-            <Text style={styles.optionArrow}>›</Text>
-          </TouchableOpacity>
+          {/* Data Management Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>💾 Data Management</Text>
 
-          <TouchableOpacity
-            style={styles.optionButton}
-            onPress={handleResetOnboarding}
-          >
-            <View style={styles.optionIcon}>
-              <Text style={styles.optionEmoji}>🎓</Text>
-            </View>
-            <View style={styles.optionContent}>
-              <Text style={styles.optionTitle}>Reset Onboarding</Text>
-              <Text style={styles.optionDescription}>
-                Show welcome screens again
-              </Text>
-            </View>
-            <Text style={styles.optionArrow}>›</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity style={styles.menuItem} onPress={handleClearTransactions}>
+              <Text style={styles.menuIcon}>📝</Text>
+              <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>Clear Transactions</Text>
+                <Text style={styles.menuSubtitle}>Wipe spending history but keep budgets</Text>
+              </View>
+              <Text style={styles.arrow}>›</Text>
+            </TouchableOpacity>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Danger Zone</Text>
-          
-          <TouchableOpacity
-            style={[styles.optionButton, styles.dangerButton]}
-            onPress={handleClearAllData}
-          >
-            <View style={styles.optionIcon}>
-              <Text style={styles.optionEmoji}>🗑️</Text>
-            </View>
-            <View style={styles.optionContent}>
-              <Text style={[styles.optionTitle, styles.dangerText]}>
-                Clear All Data
-              </Text>
-              <Text style={styles.optionDescription}>
-                Delete everything and reset app
-              </Text>
-            </View>
-            <Text style={[styles.optionArrow, styles.dangerText]}>›</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity style={styles.menuItem} onPress={handleClearBudgets}>
+              <Text style={styles.menuIcon}>�</Text>
+              <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>Clear Budgets</Text>
+                <Text style={styles.menuSubtitle}>Reset your daily/weekly limits</Text>
+              </View>
+              <Text style={styles.arrow}>›</Text>
+            </TouchableOpacity>
 
-        <View style={styles.infoSection}>
-          <Text style={styles.infoText}>
-            💡 Tip: Clearing data cannot be undone. Make sure you want to delete before confirming.
-          </Text>
-        </View>
+            <TouchableOpacity style={styles.menuItem} onPress={handleResetOnboarding}>
+              <Text style={styles.menuIcon}>🔄</Text>
+              <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>Reset Onboarding</Text>
+                <Text style={styles.menuSubtitle}>Re-run the initial setup guide</Text>
+              </View>
+              <Text style={styles.arrow}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Danger Zone */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: '#EF4444' }]}>⚠️ Danger Zone</Text>
+            <TouchableOpacity style={[styles.menuItem, styles.dangerItem]} onPress={handleClearAllData}>
+              <Text style={styles.menuIcon}>🗑️</Text>
+              <View style={styles.menuText}>
+                <Text style={[styles.menuTitle, { color: '#DC2626' }]}>Factory Reset</Text>
+                <Text style={styles.menuSubtitle}>Delete everything permanently</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* About Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>ℹ️ About</Text>
+            <View style={styles.aboutCard}>
+              <Text style={styles.aboutInfo}>Budget Management System for SHS Students</Text>
+              <Text style={styles.teamTitle}>Development Team:</Text>
+              <Text style={styles.teamMember}>• Aaliah Canoy Manduriao (Leader)</Text>
+              <Text style={styles.teamMember}>• Roshell Ann Decapeda Dela Cruz</Text>
+              <Text style={styles.teamMember}>• Lynard Bryan Alfonso Santos</Text>
+              <Text style={styles.teamMember}>• Nash Andrei Remojo Castro</Text>
+              <Text style={styles.version}>Version 1.0.0</Text>
+            </View>
+          </View>
+
+        </Animated.View>
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  section: {
-    marginTop: 20,
-    marginHorizontal: 16,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginBottom: 8,
-    marginLeft: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  card: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  cardDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  optionButton: {
-    backgroundColor: '#fff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 10,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-  },
-  optionIcon: {
-    width: 44,
-    height: 44,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  optionEmoji: {
-    fontSize: 22,
-  },
-  optionContent: {
-    flex: 1,
-  },
-  optionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  optionDescription: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  optionArrow: {
-    fontSize: 28,
-    color: '#9CA3AF',
-    marginLeft: 8,
-  },
-  dangerButton: {
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
-    backgroundColor: '#FEF2F2',
-  },
-  dangerText: {
-    color: '#DC2626',
-  },
-  infoSection: {
-    marginHorizontal: 16,
-    marginTop: 20,
-    marginBottom: 40,
-    padding: 16,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 12,
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#4F46E5',
-    lineHeight: 20,
-  },
+  container: { flex: 1, backgroundColor: 'transparent' },
+  mainView: { flex: 1 },
+  header: { paddingTop: 60, paddingHorizontal: 20, marginBottom: 20 },
+  headerTitle: { fontSize: 32, fontWeight: 'bold', color: '#1F2937' },
+  headerSubtitle: { fontSize: 16, color: '#6B7280' },
+  section: { marginHorizontal: 20, marginBottom: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 12 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 20, borderRadius: 20, elevation: 4 },
+  profileIcon: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  profileEmoji: { fontSize: 24 },
+  profileName: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
+  profileSubtitle: { fontSize: 14, color: '#6B7280' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 10, elevation: 2 },
+  menuIcon: { fontSize: 24, marginRight: 15 },
+  menuText: { flex: 1 },
+  menuTitle: { fontSize: 16, fontWeight: '600', color: '#374151' },
+  menuSubtitle: { fontSize: 12, color: '#9CA3AF' },
+  arrow: { fontSize: 20, color: '#D1D5DB' },
+  dangerItem: { borderColor: '#FEE2E2', borderWidth: 1 },
+  aboutCard: { backgroundColor: '#fff', padding: 20, borderRadius: 20, elevation: 2 },
+  aboutInfo: { fontSize: 14, fontWeight: 'bold', color: '#4F46E5', marginBottom: 10 },
+  teamTitle: { fontSize: 13, fontWeight: 'bold', color: '#374151', marginBottom: 5 },
+  teamMember: { fontSize: 13, color: '#6B7280', marginBottom: 2 },
+  version: { fontSize: 12, color: '#D1D5DB', marginTop: 15, textAlign: 'center' },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
 });
-

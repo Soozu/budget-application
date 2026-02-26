@@ -54,43 +54,88 @@ const budgetCategories = [
   { key: 'projects', label: 'Projects', icon: '📝', example: 'Materials' },
 ];
 
-export default function OnboardingScreen({ onComplete }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [showBudgetSetup, setShowBudgetSetup] = useState(false);
-  const [frequency, setFrequency] = useState('daily');
-  const [amount, setAmount] = useState('');
-  const [budgets, setBudgets] = useState({});
-  const scrollX = useRef(new Animated.Value(0)).current;
+/**
+ * OnboardingScreen handles the initial user setup, including:
+ * 1. Welcome screen
+ * 2. Daily allowance input
+ * 3. Budget category planning
+ * 4. Savings goal setting
+ * 5. Completion/Ready screen
+ */
+export default function OnboardingScreen({ navigation, onComplete }) {
+  // --- STATE MANAGEMENT ---
+  const [step, setStep] = useState(1); // Tracks current onboarding step (1-5)
+  const [amount, setAmount] = useState(''); // Stores daily allowance input
+  const [savingsGoal, setSavingsGoal] = useState(''); // Stores savings goal input
+  const [budgets, setBudgets] = useState({}); // Stores daily budget amounts for categories
+  const [fadeAnim] = useState(new Animated.Value(1)); // Animation for screen transitions
+  const [scaleAnim] = useState(new Animated.Value(1)); // Animation for button/content scaling
   const scrollViewRef = useRef(null);
 
-  const handleNext = () => {
-    if (currentIndex < slides.length - 1) {
-      const nextIndex = currentIndex + 1;
-      scrollViewRef.current?.scrollTo({
-        x: width * nextIndex,
-        animated: true,
-      });
-      setCurrentIndex(nextIndex);
-    } else {
-      setShowBudgetSetup(true);
-    }
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showBudgetSetup, setShowBudgetSetup] = useState(false);
+  const scrollX = useRef(new Animated.Value(0)).current;
+
+  /**
+   * Animates transition between onboarding steps
+   */
+  const animateTransition = (callback) => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      callback();
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
   };
 
-  const handleSaveBudget = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Required', 'Please enter your allowance amount');
+  /**
+   * Moves to the next step with animation and validation
+   */
+  const handleNext = () => {
+    // If we are currently showing slides, handle next slide or transition to setup
+    if (!showBudgetSetup) {
+      if (currentIndex < slides.length - 1) {
+        scrollViewRef.current?.scrollTo({
+          x: (currentIndex + 1) * width,
+          animated: true,
+        });
+      } else {
+        setShowBudgetSetup(true);
+      }
       return;
     }
 
-    try {
-      // Calculate daily amount from daily allowance
-      const dailyAmount = parseFloat(amount);
-      const weeklyAmount = dailyAmount * 7;
-      
-      // Calculate total budgeted amount (daily)
+    // Basic validation for budget step
+    if (step === 2 && (!amount || isNaN(parseFloat(amount)))) {
+      Alert.alert('Error', 'Please enter your daily allowance');
+      return;
+    }
+
+    // Budget validation for step 3 (category planning)
+    if (step === 3) {
+      const dailyAmount = parseFloat(amount) || 0;
       const totalBudgeted = Object.values(budgets).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-      
-      // Check if total budget exceeds daily allowance
+
       if (totalBudgeted > dailyAmount) {
         Alert.alert(
           'Budget Exceeds Allowance',
@@ -99,25 +144,52 @@ export default function OnboardingScreen({ onComplete }) {
         );
         return;
       }
-      
-      // Save budget data
-      const budgetData = {
-        categories: budgets,
-        weeklyAllowance: weeklyAmount.toString(),
-        dailyAllowance: dailyAmount.toString(),
-        frequency: 'daily',
-        originalAmount: amount,
-      };
+    }
 
-      await AsyncStorage.setItem('budgets', JSON.stringify(budgetData));
-      
-      onComplete();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save budget');
+    if (step < 5) {
+      animateTransition(() => setStep(step + 1));
+    } else {
+      // This else block is for the final step, where we save and complete
+      handleSaveBudget();
     }
   };
 
+  /**
+   * Moves to the previous step with animation
+   */
+  const handleBack = () => {
+    if (step > 1) {
+      animateTransition(() => setStep(step - 1));
+    }
+  };
 
+  /**
+   * Saves the initial budget configuration to local storage
+   */
+  const handleSaveBudget = async () => {
+    try {
+      const dailyAmount = parseFloat(amount) || 0;
+      const budgetData = {
+        categories: budgets,
+        weeklyAllowance: (dailyAmount * 7).toString(),
+        dailyAllowance: dailyAmount.toString(),
+        savingsGoal: savingsGoal || '',
+      };
+
+      // Persist to AsyncStorage
+      await AsyncStorage.setItem('budgets', JSON.stringify(budgetData));
+
+      // Trigger onboarding completion callback
+      if (onComplete) onComplete();
+    } catch (error) {
+      console.error('Error saving initial budget:', error);
+      Alert.alert('Error', 'Failed to save your settings. Please try again.');
+    }
+  };
+
+  /**
+   * Updates a specific budget category amount
+   */
   const updateBudget = (category, value) => {
     setBudgets({
       ...budgets,
@@ -145,7 +217,7 @@ export default function OnboardingScreen({ onComplete }) {
     return (
       <View style={[styles.container, { backgroundColor: '#4F46E5' }]}>
         <StatusBar style="light" />
-        
+
         <ScrollView style={styles.setupScrollView} contentContainerStyle={styles.setupContent}>
           <View style={styles.setupHeader}>
             <Text style={styles.setupIcon}>💰</Text>
@@ -158,7 +230,7 @@ export default function OnboardingScreen({ onComplete }) {
           {/* Allowance Input */}
           <View style={styles.setupCard}>
             <Text style={styles.cardTitle}>How much allowance do you receive?</Text>
-            
+
             <Text style={styles.frequencyLabel}>Daily Allowance</Text>
 
             <View style={styles.amountInput}>
@@ -172,20 +244,20 @@ export default function OnboardingScreen({ onComplete }) {
                 placeholderTextColor="#9CA3AF"
               />
             </View>
-            
-            {amount && (
+
+            {!!amount && (
               <Text style={styles.amountHint}>
                 Weekly: ₱{(parseFloat(amount) * 7).toFixed(0)} per week
               </Text>
             )}
-            
+
             {/* Budget Validation Warning */}
-            {amount && Object.values(budgets).some(val => parseFloat(val) > 0) && (
+            {!!amount && Object.values(budgets).some(val => parseFloat(val) > 0) && (
               (() => {
                 const dailyAmount = parseFloat(amount);
                 const totalBudgeted = Object.values(budgets).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
                 const isOverBudget = totalBudgeted > dailyAmount;
-                
+
                 return isOverBudget ? (
                   <View style={styles.warningBox}>
                     <Text style={styles.warningIcon}>⚠️</Text>
@@ -202,7 +274,7 @@ export default function OnboardingScreen({ onComplete }) {
           <View style={styles.setupCard}>
             <Text style={styles.cardTitle}>Plan Your Daily Spending (Optional)</Text>
             <Text style={styles.cardSubtitle}>You can adjust these later</Text>
-            
+
             {budgetCategories.map((cat) => (
               <View key={cat.key} style={styles.categoryRow}>
                 <View style={styles.categoryInfo}>
@@ -223,7 +295,7 @@ export default function OnboardingScreen({ onComplete }) {
                     placeholderTextColor="#9CA3AF"
                   />
                 </View>
-                {budgets[cat.key] && (
+                {!!budgets[cat.key] && (
                   <Text style={styles.weeklyHint}>
                     Weekly: ₱{(parseFloat(budgets[cat.key]) * 7).toFixed(0)}
                   </Text>
@@ -232,12 +304,42 @@ export default function OnboardingScreen({ onComplete }) {
             ))}
           </View>
 
+          {/* Savings Goal */}
+          <View style={styles.setupCard}>
+            <Text style={styles.cardTitle}>💰 Set Your Savings Goal (Optional)</Text>
+            <Text style={styles.cardSubtitle}>Track your progress towards a savings target</Text>
+
+            <View style={styles.amountInput}>
+              <Text style={styles.peso}>₱</Text>
+              <TextInput
+                style={styles.amountField}
+                value={savingsGoal}
+                onChangeText={setSavingsGoal}
+                placeholder="0"
+                keyboardType="decimal-pad"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            {!!savingsGoal && (
+              <Text style={styles.amountHint}>
+                Target: ₱{parseFloat(savingsGoal).toFixed(2)}
+              </Text>
+            )}
+
+            {!savingsGoal && (
+              <Text style={styles.optionalHint}>
+                💡 Tip: Setting a savings goal helps you stay motivated and track your progress!
+              </Text>
+            )}
+          </View>
+
           {/* Action Buttons */}
           <View style={styles.setupActions}>
             <TouchableOpacity style={styles.skipSetupButton} onPress={onComplete}>
               <Text style={styles.skipSetupText}>Skip for now</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={styles.saveButton} onPress={handleSaveBudget}>
               <Text style={styles.saveButtonText}>Save & Continue</Text>
             </TouchableOpacity>
@@ -250,7 +352,7 @@ export default function OnboardingScreen({ onComplete }) {
   return (
     <View style={[styles.container, { backgroundColor: slides[currentIndex].backgroundColor }]}>
       <StatusBar style="light" />
-      
+
       {/* Skip Button */}
       {currentIndex < slides.length - 1 && (
         <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
@@ -328,6 +430,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    minHeight: '100%',
   },
   skipButton: {
     position: 'absolute',
@@ -574,6 +677,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#4F46E5',
+  },
+  optionalHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: 18,
   },
 });
 
